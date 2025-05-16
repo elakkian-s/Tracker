@@ -2,14 +2,25 @@
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
+import requests
+
+# Function to fetch real-time stock price from the Flask API
+def get_stock_price(ticker):
+    try:
+        response = requests.get(f"http://localhost:5000/price?ticker={ticker}")
+        data = response.json()
+        return data['price']
+    except Exception as e:
+        st.error(f"Error fetching price for {ticker}: {e}")
+        return None
 
 # Initialize session state for portfolio data
 if 'portfolio' not in st.session_state:
-    st.session_state['portfolio'] = []
+    st.session_state.portfolio = []
 
-# Function to add asset to portfolio
+# Function to add asset to the portfolio
 def add_asset(name, asset_type, quantity, price):
-    st.session_state['portfolio'].append({
+    st.session_state.portfolio.append({
         'Name': name,
         'Type': asset_type,
         'Quantity': quantity,
@@ -18,37 +29,45 @@ def add_asset(name, asset_type, quantity, price):
     })
 
 # Streamlit app layout
-st.title("Personal Portfolio Management AI Agent")
+st.title("Portfolio Management AI Agent")
 
 # Input form for adding assets
-st.header("Add Asset")
-with st.form(key='add_asset_form'):
-    name = st.text_input("Asset Name")
+with st.form("add_asset_form"):
+    name = st.text_input("Asset Name (e.g., Apple, Bitcoin)")
     asset_type = st.selectbox("Asset Type", ["Stock", "Crypto", "Real Estate", "Other"])
-    quantity = st.number_input("Quantity", min_value=0.0, format="%.2f")
-    price = st.number_input("Price per Unit", min_value=0.0, format="%.2f")
-    submit_button = st.form_submit_button(label='Add Asset')
+    quantity = st.number_input("Quantity", min_value=0.0, step=0.01)
+    ticker = st.text_input("Stock Ticker (optional, for real-time price)")
+    manual_price = st.number_input("Price per Unit (if no ticker)", min_value=0.0, step=0.01)
     
-    if submit_button:
+    # Fetch real-time price if ticker is provided
+    if ticker:
+        price = get_stock_price(ticker)
+        if price:
+            st.write(f"Real-time price for {ticker}: {price}")
+        else:
+            price = manual_price
+    else:
+        price = manual_price
+    
+    submitted = st.form_submit_button("Add Asset")
+    if submitted:
         add_asset(name, asset_type, quantity, price)
-        st.success(f"Asset {name} added to portfolio!")
+        st.success(f"Added {quantity} units of {name} at {price} per unit.")
 
 # Display portfolio summary
-st.header("Portfolio Summary")
-if st.session_state['portfolio']:
-    df = pd.DataFrame(st.session_state['portfolio'])
+if st.session_state.portfolio:
+    df = pd.DataFrame(st.session_state.portfolio)
+    st.subheader("Portfolio Summary")
     st.dataframe(df)
     
     # Display total portfolio value
     total_value = df['Total Value'].sum()
-    st.write(f"**Total Portfolio Value:** ${total_value:.2f}")
+    st.write(f"**Total Portfolio Value:** {total_value}")
     
-    # Plot asset allocation pie chart
-    st.header("Asset Allocation")
-    asset_allocation = df.groupby('Type')['Total Value'].sum()
+    # Display asset allocation pie chart
+    st.subheader("Asset Allocation")
+    allocation = df.groupby('Type')['Total Value'].sum()
     fig, ax = plt.subplots()
-    ax.pie(asset_allocation, labels=asset_allocation.index, autopct='%1.1f%%')
-    ax.axis('equal')  # Equal aspect ratio ensures that pie is drawn as a circle.
+    ax.pie(allocation, labels=allocation.index, autopct='%1.1f%%', startangle=90)
+    ax.axis('equal')
     st.pyplot(fig)
-else:
-    st.write("No assets in portfolio. Please add assets to see the summary.")
